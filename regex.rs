@@ -10,7 +10,6 @@ enum Regex {
   Rep(~Regex)
 }
 
-
 fn simplify(re: Regex) -> Regex {
   match re {
     Seq(~Null, _) => Null,
@@ -56,15 +55,13 @@ fn derive(re: Regex, c: char) -> Regex{
   })
 }
 
-fn matches(re: Regex, data: &str) -> bool {
-  let mut re = re;
-
+// Use the derivatives directly to match against a string
+fn matches(mut re: Regex, data: &str) -> bool {
   for c in data.chars() {
     re = derive(re, c);
   }
   regex_empty(&re)
 }
-
 
 #[test]
 fn tests() {
