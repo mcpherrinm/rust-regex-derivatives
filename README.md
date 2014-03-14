@@ -15,3 +15,10 @@ so let's write a little recursive descent parser.  Once again I'll refer you to
 Matt Might's blog for more information:
 
 http://matt.might.net/articles/parsing-regex-with-recursive-descent/
+
+Next up is one of the coolest parts of the whole thing:
+We can construct a DFA equivalent to the regex using derivatives.  This comes
+from the original Brzozowski paper I think, but I haven't read it.
+
+The canonical "tutorial" on this work is due to Owens, Reppy, Turon:
+http://www.mpi-sws.org/~turon/re-deriv.pdf
