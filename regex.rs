@@ -15,20 +15,20 @@ enum Regex {
 // Keep regexes in canonical form so it's easier to compare them
 fn simplify(re: Regex) -> Regex {
   match re {
-    Null => Null,
-    Blank => Blank,
-    AnyChar => AnyChar,
-    Char(c) => Char(c),
-    Alt(~Null, ~r) | Alt(~r, ~Null) => simplify(r),
-    Alt(~r1, ~r2) => Alt(~simplify(r1), ~simplify(r2)),
-    Seq(~Null, _) | Seq(_, ~Null) => Null,
+    Null                              => Null,
+    Blank                             => Blank,
+    AnyChar                           => AnyChar,
+    Char(c)                           => Char(c),
+    Alt(~Null, ~r)  | Alt(~r, ~Null)  => simplify(r),
+    Alt(~r1, ~r2)                     => Alt(~simplify(r1), ~simplify(r2)),
+    Seq(~Null, _)   | Seq(_, ~Null)   => Null,
     Seq(~Blank, ~r) | Seq(~r, ~Blank) => simplify(r),
-    Seq(~r1, ~r2) => Seq(~simplify(r1), ~simplify(r2)),
-    Rep(~Null) | Rep(~Blank) => Blank,
-    Rep(~r) | Rep(~Rep(~r)) => Rep(~simplify(r)),
-    Not(~Not(~r)) => simplify(r),
-    Not(~Null) => Rep(~AnyChar),
-    Not(~r) => Not(~simplify(r)),
+    Seq(~r1, ~r2)                     => Seq(~simplify(r1), ~simplify(r2)),
+    Rep(~Null)      | Rep(~Blank)     => Blank,
+    Rep(~r)         | Rep(~Rep(~r))   => Rep(~simplify(r)),
+    Not(~Not(~r))                     => simplify(r),
+    Not(~Null)                        => Rep(~AnyChar),
+    Not(~r)                           => Not(~simplify(r)),
   }
 }
 
