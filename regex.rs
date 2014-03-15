@@ -12,20 +12,23 @@ enum Regex {
   Not(~Regex),
 }
 
-// This makes comparing regexes nicer.
+// Keep regexes in canonical form so it's easier to compare them
 fn simplify(re: Regex) -> Regex {
   match re {
-    Seq(~Null, _) => Null,
-    Seq(_, ~Null) => Null,
-    Seq(~Blank, ~r) => r,
-    Seq(~r, ~Blank) => r,
-    Alt(~Null, ~r) => r,
-    Alt(~r, ~Null) => r,
-    Rep(~Null) => Blank,
-    Rep(~Blank) => Blank,
-    Not(~Not(~r)) => r,
+    Null => Null,
+    Blank => Blank,
+    AnyChar => AnyChar,
+    Char(c) => Char(c),
+    Alt(~Null, ~r) | Alt(~r, ~Null) => simplify(r),
+    Alt(~r1, ~r2) => Alt(~simplify(r1), ~simplify(r2)),
+    Seq(~Null, _) | Seq(_, ~Null) => Null,
+    Seq(~Blank, ~r) | Seq(~r, ~Blank) => simplify(r),
+    Seq(~r1, ~r2) => Seq(~simplify(r1), ~simplify(r2)),
+    Rep(~Null) | Rep(~Blank) => Blank,
+    Rep(~r) | Rep(~Rep(~r)) => Rep(~simplify(r)),
+    Not(~Not(~r)) => simplify(r),
     Not(~Null) => Rep(~AnyChar),
-    _ => re
+    Not(~r) => Not(~simplify(r)),
   }
 }
 
