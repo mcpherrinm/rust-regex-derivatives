@@ -84,11 +84,6 @@ fn regex_empty(re: &Regex) -> bool {
 
 // Take the derivative of a regex wrt a character
 fn derive(re: Regex, c: char) -> Regex{
-  let r = derive2(re, c);
-  println!("derived {}", r);
-  r
-}
-fn derive2(re: Regex, c: char) -> Regex{
   simplify(match re {
     Null => Null,
     Epsilon => Null,
@@ -157,7 +152,7 @@ fn matcher_tests() {
 
 type CharIter<'a> = std::iter::Peekable<char,std::str::Chars<'a>>;
 
-fn parse_regex<'a>(data: &mut CharIter<'a>) -> Regex {
+fn parse_regex(data: &mut CharIter) -> Regex {
   let term = parse_term(data);
   if data.peek() == Some(&'|') {
     data.next();
@@ -168,7 +163,7 @@ fn parse_regex<'a>(data: &mut CharIter<'a>) -> Regex {
   }
 }
 
-fn parse_term<'a>(data: &mut CharIter<'a>) -> Regex {
+fn parse_term(data: &mut CharIter) -> Regex {
   let mut factor = parse_factor(data);
   loop {
     match data.peek() {
@@ -182,7 +177,7 @@ fn parse_term<'a>(data: &mut CharIter<'a>) -> Regex {
   }
 }
 
-fn parse_factor<'a>(data: &mut CharIter<'a>) -> Regex {
+fn parse_factor(data: &mut CharIter) -> Regex {
   let mut base = parse_base(data);
   while !data.is_empty() && data.peek() == Some(&'*') {
     data.next();
@@ -191,13 +186,17 @@ fn parse_factor<'a>(data: &mut CharIter<'a>) -> Regex {
   base
 }
 
-fn parse_base<'a>(data: &mut CharIter<'a>) -> Regex {
+fn parse_base(data: &mut CharIter) -> Regex {
   match data.next().unwrap() {
     '(' => {
       let nested = parse_regex(data);
       data.next(); // consume the ')'
       nested
     }
+    /*'[' => {
+      let range = parse_range(data);
+      data.next();
+    }*/
     '.' => AnyChar,
     '\\' => Char(data.next().unwrap()),
     c => Char(c),
