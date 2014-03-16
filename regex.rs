@@ -44,17 +44,17 @@ enum Regex {
 fn simplify(re: Regex) -> Regex {
   match re {
     Null => Null,
-    Epsilon                           => Epsilon,
-    AnyChar                           => AnyChar,
+    Epsilon => Epsilon,
+    AnyChar => AnyChar,
     CharSet(ref cset) if cset.empty() => Null,
-    CharSet(c)                        => CharSet(c),
-    Alt(~r, ~s)                     => {
+    CharSet(c) => CharSet(c),
+    Alt(~r, ~s) => {
       match (simplify(r), simplify(s)) {
         (Null, r) | (r, Null) => r,
         (r, s) => Alt(~r, ~s)
       }
     },
-    Seq(~r, ~s)                     => {
+    Seq(~r, ~s) => {
       match (simplify(r), simplify(s)) {
         (Null, _)    | (_, Null)    => Null,
         (Epsilon, r) | (r, Epsilon) => r,
