@@ -1,41 +1,80 @@
-#[deriving(Clone)]
+// Stores a set of characters as a collection of dense ranges
 #[deriving(Eq)]
+#[deriving(Clone)]
+#[deriving(Show)]
+struct RangeSet {
+  assoc_list: std::vec_ng::Vec<(char, char)>,
+}
+
+impl RangeSet {
+  fn empty(&self) -> bool {
+    self.assoc_list.len() == 0
+  }
+
+  fn has(&self, c: char) -> bool {
+    for pair in self.assoc_list.iter() {
+      let &(start, end) = pair;
+      if c >= start && c <= end {
+        return true;
+      }
+    }
+    false
+  }
+}
+
+fn Char(c: char) -> Regex {
+  let l = vec!((c,c));
+  CharSet(RangeSet{ assoc_list: l })
+}
+
+#[deriving(Eq)]
+#[deriving(Clone)]
 #[deriving(Show)]
 enum Regex {
-  Null,
-  Blank,
-  AnyChar,
-  Char(char),
-  Alt(~Regex, ~Regex),
-  Seq(~Regex, ~Regex),
-  Rep(~Regex),
-  Not(~Regex),
+  Null, // Matches nothing
+  Epsilon, // Matches the empty string
+  AnyChar, // Matches any character
+  CharSet(RangeSet), // set of chars, nonempty
+  Alt(~Regex, ~Regex), // Alternation, aka "or"
+  Seq(~Regex, ~Regex), // One after another
+  Rep(~Regex), // Kleene closure, repeated matching
 }
 
 // Keep regexes in canonical form so it's easier to compare them
 fn simplify(re: Regex) -> Regex {
   match re {
-    Null                              => Null,
-    Blank                             => Blank,
+    Null => Null,
+    Epsilon                           => Epsilon,
     AnyChar                           => AnyChar,
-    Char(c)                           => Char(c),
-    Alt(~Null, ~r)  | Alt(~r, ~Null)  => simplify(r),
-    Alt(~r1, ~r2)                     => Alt(~simplify(r1), ~simplify(r2)),
-    Seq(~Null, _)   | Seq(_, ~Null)   => Null,
-    Seq(~Blank, ~r) | Seq(~r, ~Blank) => simplify(r),
-    Seq(~r1, ~r2)                     => Seq(~simplify(r1), ~simplify(r2)),
-    Rep(~Null)      | Rep(~Blank)     => Blank,
-    Rep(~r)         | Rep(~Rep(~r))   => Rep(~simplify(r)),
-    Not(~Not(~r))                     => simplify(r),
-    Not(~Null)                        => Rep(~AnyChar),
-    Not(~r)                           => Not(~simplify(r)),
+    CharSet(ref cset) if cset.empty() => Null,
+    CharSet(c)                        => CharSet(c),
+    Alt(~r, ~s)                     => {
+      match (simplify(r), simplify(s)) {
+        (Null, r) | (r, Null) => r,
+        (r, s) => Alt(~r, ~s)
+      }
+    },
+    Seq(~r, ~s)                     => {
+      match (simplify(r), simplify(s)) {
+        (Null, _)    | (_, Null)    => Null,
+        (Epsilon, r) | (r, Epsilon) => r,
+        (r,s) => Seq(~r,~s),
+      }
+    },
+    Rep(~r) => {
+      match simplify(r) {
+        Null | Epsilon => Epsilon,
+        Rep(~r) | r => Rep(~r),
+      }
+    }
   }
 }
 
 /// Does this regex match the empty string?
 fn regex_empty(re: &Regex) -> bool {
   match *re {
-    Blank => true,
+    Epsilon => true,
+    CharSet(ref range) => range.empty(),
     Rep(_) => true,
     Seq(~ref p1, ~ref p2) => regex_empty(p1) && regex_empty(p2),
     Alt(~ref p1, ~ref p2) => regex_empty(p1) || regex_empty(p2),
@@ -43,14 +82,19 @@ fn regex_empty(re: &Regex) -> bool {
   }
 }
 
-// The magic Brzozowski juice
+// Take the derivative of a regex wrt a character
 fn derive(re: Regex, c: char) -> Regex{
+  let r = derive2(re, c);
+  println!("derived {}", r);
+  r
+}
+fn derive2(re: Regex, c: char) -> Regex{
   simplify(match re {
     Null => Null,
-    Blank => Null,
-    AnyChar => Blank,
-    Char(cpat) if c == cpat => Blank,
-    Char(_) => Null,
+    Epsilon => Null,
+    AnyChar => Epsilon,
+    CharSet(ref cpat) if cpat.has(c) => Epsilon,
+    CharSet(_) => Null,
     Alt(~p1, ~p2) => Alt(~derive(p1, c), ~derive(p2, c)),
     Seq(~p1, ~p2) => {
       let p1div = Seq(~derive(p1.clone(), c), ~p2.clone());
@@ -60,15 +104,26 @@ fn derive(re: Regex, c: char) -> Regex{
         p1div
       }
     },
-    Rep(~p) => Seq(~derive(p.clone(), c), ~Rep(~p)),
-    Not(~p) => Not(~derive(p, c)),
+    Rep(~p) => simplify(Seq(~derive(p.clone(), c), ~Rep(~p))),
   })
+}
+
+#[test]
+fn derive_tests() {
+  assert_eq!(derive(Char('a'), 'a'), Epsilon);
+  assert_eq!(derive(Char('a'), 'b'), Null);
+  assert_eq!(derive(Seq(~Char('f'), ~Char('b')), 'f'), Char('b'));
+  assert_eq!(derive(Alt(~Seq(~Char('f'), ~Char('b')),
+                        ~Seq(~Char('f'), ~Rep(~Char('z')))),
+                    'f'),
+             Alt(~Char('b'), ~Rep(~Char('z'))));
+  assert_eq!(derive(Rep(~Char('a')), 'a'), Rep(~Char('a')));
 }
 
 // Use the derivatives directly to match against a string
 fn do_match(mut re: Regex, data: &str) -> bool {
   for c in data.chars() {
-    println!("Deriving re {} with c {}", re, c);
+    println!("Deriving re {} with respect to {}", re, c);
     re = derive(re, c);
     println!("Derived re {}", re);
   }
@@ -77,20 +132,11 @@ fn do_match(mut re: Regex, data: &str) -> bool {
 
 #[test]
 fn matcher_tests() {
-  assert_eq!(derive(Char('a'), 'a'), Blank);
-  assert_eq!(derive(Char('a'), 'b'), Null);
-  assert_eq!(derive(Seq(~Char('f'), ~Char('b')), 'f'), Char('b'));
-  assert_eq!(derive(Alt(~Seq(~Char('f'), ~Char('b')),
-                        ~Seq(~Char('f'), ~Rep(~Char('z')))),
-                    'f'),
-             Alt(~Char('b'), ~Rep(~Char('z'))));
   assert!(do_match(Seq(~Char('b'), ~Rep(~Char('o'))), "boooo"));
   assert!(!do_match(Seq(~Char('b'), ~Rep(~Char('o'))), "bozo"));
 
   assert!(do_match(Seq(~Char('f'), ~Rep(~Alt(~Char('b'), ~Char('z')))),
                   "fbzbb"));
-  assert!(do_match(Not(~Char('a')), "b"));
-  assert!(do_match(Not(~Char('a')), "bbb"));
 }
 
 // Parsing regexes
@@ -165,7 +211,9 @@ fn matches(expr: &str, data: &str) -> bool {
 
 #[test]
 fn parsing_tests() {
-  let abcstar = parse_regex(&mut "abc**".chars().peekable());
+  let abcstar = parse_regex(&mut "abc*".chars().peekable());
+  assert!(do_match(abcstar.clone(), "ab"));
+  assert!(do_match(abcstar.clone(), "abc"));
   assert!(do_match(abcstar.clone(), "abccccc"));
   assert!(!do_match(abcstar, "abbbcc"));
   assert!(matches("((a)*)", "aaaaa"));
