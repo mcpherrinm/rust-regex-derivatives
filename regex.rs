@@ -3,7 +3,7 @@
 #[deriving(Clone)]
 #[deriving(Show)]
 struct RangeSet {
-  assoc_list: std::vec_ng::Vec<(char, char)>,
+  assoc_list: std::vec::Vec<(char, char)>,
 }
 
 impl RangeSet {
@@ -19,6 +19,14 @@ impl RangeSet {
       }
     }
     false
+  }
+
+  fn add(&mut self, c: char) {
+    self.assoc_list.push((c, c));
+  }
+
+  fn add_range(&mut self, start: char, end: char) {
+    self.assoc_list.push((start, end));
   }
 }
 
@@ -193,13 +201,38 @@ fn parse_base(data: &mut CharIter) -> Regex {
       data.next(); // consume the ')'
       nested
     }
-    /*'[' => {
+    '[' => {
       let range = parse_range(data);
-      data.next();
-    }*/
+      data.next(); // consume the ']'
+      range
+    }
     '.' => AnyChar,
     '\\' => Char(data.next().unwrap()),
     c => Char(c),
+  }
+}
+
+fn parse_range(data: &mut CharIter) -> Regex {
+  let mut rangeset = RangeSet{ assoc_list: vec!() };
+  loop {
+    match *data.peek().unwrap() {
+      ']' => return CharSet(rangeset),
+      c => {
+        data.next(); // consume the c
+        if data.peek() == Some(&'-') {
+          data.next(); // consume the '-'
+          if data.peek() == Some(&']') {
+            // A dash in trailing position matches a literal -
+            rangeset.add(c);
+            rangeset.add('-');
+          } else {
+            rangeset.add_range(c, data.next().unwrap());
+          }
+        } else {
+          rangeset.add(c);
+        }
+      }
+    }
   }
 }
 
@@ -217,4 +250,9 @@ fn parsing_tests() {
   assert!(!do_match(abcstar, "abbbcc"));
   assert!(matches("((a)*)", "aaaaa"));
   assert!(matches("(a|b)*", "aaaabaabbbaa"));
+  assert!(matches("[abc]*", "abccabacbbaccba"));
+  assert!(matches("a[b-c]d", "abd"));
+  assert!(matches("A[a-z]Z", "AcZ"));
+  assert!(matches("A[a-]Z", "A-Z"));
+  assert!(matches("A[a-]Z", "AaZ"));
 }
