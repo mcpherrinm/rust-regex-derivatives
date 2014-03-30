@@ -236,23 +236,96 @@ fn parse_range(data: &mut CharIter) -> Regex {
   }
 }
 
+fn parse(expr: &str) -> Regex {
+  simplify(parse_regex(&mut expr.chars().peekable()))
+}
+
 fn matches(expr: &str, data: &str) -> bool {
-  let r = parse_regex(&mut expr.chars().peekable());
+  let r = parse(expr);
   do_match(r, data)
 }
 
 #[test]
 fn parsing_tests() {
-  let abcstar = parse_regex(&mut "abc*".chars().peekable());
+  let abcstar = parse("abc*");
   assert!(do_match(abcstar.clone(), "ab"));
   assert!(do_match(abcstar.clone(), "abc"));
   assert!(do_match(abcstar.clone(), "abccccc"));
   assert!(!do_match(abcstar, "abbbcc"));
   assert!(matches("((a)*)", "aaaaa"));
-  assert!(matches("(a|b)*", "aaaabaabbbaa"));
+  assert!(matches("a(a|b)*", "aaaabaabbbaa"));
   assert!(matches("[abc]*", "abccabacbbaccba"));
   assert!(matches("a[b-c]d", "abd"));
   assert!(matches("A[a-z]Z", "AcZ"));
   assert!(matches("A[a-]Z", "A-Z"));
   assert!(matches("A[a-]Z", "AaZ"));
+  assert!(matches("ab(c|d*)ef", "abef"));
+  assert!(matches(".*", ""));
+  assert!(matches(".*", "Happy little flowers"));
+  assert!(!matches("abc", "abcd"));
 }
+
+// This approximate equivalence relation on regexes is very important for DFA
+// generation.  
+fn equiv(re1: &Regex, re2: &Regex) -> bool {
+  match (re1, re2) {
+    (r1, r2) if r1 == r2 => true,
+
+    (&CharSet(ref rs1), &CharSet(ref rs2)) => rs1 == rs2,
+
+    (&Alt(~Alt(~ref r1, ~ref s1), ~ref t1),
+     &Alt(~ref r2, ~Alt(~ref s2, ~ref t2))) 
+      if equiv(r1, r2) && equiv(s1, s2) && equiv(t1, t2) => true,
+
+    (&Alt(~ref r1, ~ref s1), &Alt(~ref s2, ~ref r2)) 
+      if equiv(r1, r2) && equiv(s1, s2) => true,
+
+    (&Alt(~ref r1, ~ref s1), &Alt(~ref r2, ~ref s2)) =>
+      equiv(r1, r2) && equiv(s1, s2),
+
+    (&Seq(~Seq(~ref r1, ~ref s1), ~ref t1),
+     &Seq(~ref r2, ~Seq(~ref s2, ~ref t2)))
+      if (equiv(r1, r2) && equiv(s1, s2) && equiv(t1, t2)) => true,
+
+    (&Seq(~ref r1, ~ref s1), &Seq(~ref r2, ~ref s2)) =>
+      equiv(r1, r2) && equiv(s1, s2),
+
+    (&Rep(~ref r1), &Rep(~ref r2)) => equiv(r1, r2),
+
+    _ => false,
+  }
+}
+
+#[test]
+fn equiv_test() {
+  assert!(!equiv(&parse("a"), &parse("b")));
+  assert!(equiv(&parse("a|b"), &parse("b|a")));
+  assert!(equiv(&parse("a|b|c"), &parse("a|b|c")));
+  assert!(equiv(&parse("a|b|c"), &parse("a|(b|c)")));
+  assert!(equiv(&parse("(a|b)|c"), &parse("a|b|c")));
+  assert!(equiv(&parse("(a|b)|c"), &parse("a|(b|c)")));
+  assert!(equiv(&parse("(a|b)|c"), &parse("a|(b|c)")));
+  assert!(equiv(&parse("(a|b)(c|d)"), &parse("(a|b)(c|d))")));
+  assert!(equiv(&parse("(b|a)(c|d)"), &parse("(a|b)(c|d))")));
+  assert!(equiv(&parse("(a|b)(d|c)"), &parse("(a|b)(c|d))")));
+  assert!(equiv(&parse("(b|a)(d|c)"), &parse("(a|b)(c|d))")));
+  assert!(equiv(&parse("(a|b)|(c|d)"), &parse("(a|b)|(c|d))")));
+  assert!(equiv(&parse("(b|a)|(c|d)"), &parse("(a|b)|(c|d))")));
+  assert!(equiv(&parse("(a|b)|(d|c)"), &parse("(a|b)|(c|d))")));
+  assert!(equiv(&parse("(b|a)|(d|c)"), &parse("(a|b)|(c|d))")));
+  assert!(equiv(&parse("(ab)c"), &parse("a(bc)")));
+  assert!(equiv(&parse("abc"), &parse("a(bc)")));
+  assert!(equiv(&parse("(ab)c"), &parse("abc")));
+  assert!(equiv(&parse("((x|y)(w|z))(1|2)"), &parse("(x|y)((w|z)(1|2))")));
+  assert!(equiv(&parse("(x|y)(w|z)(1|2)"), &parse("(x|y)((w|z)(1|2))")));
+  assert!(equiv(&parse("((x|y)(w|z))(1|2)"), &parse("(x|y)(w|z)(1|2)")));
+  assert!(equiv(&parse("a*"), &parse("a**")));
+  assert!(equiv(&parse("a*"), &parse("a****")));
+  assert!(equiv(&parse("((ab)c)*"), &parse("(a(bc))*")));
+  assert!(equiv(&parse("((ab)c)***"), &parse("(a(bc))*")));
+  assert!(!equiv(&parse("[abc]"), &parse("[q]")));
+  assert!(equiv(&parse("."), &parse(".")));
+  assert!(equiv(&parse("(a|b)**"), &parse("(b|a)**")));
+}
+
+
