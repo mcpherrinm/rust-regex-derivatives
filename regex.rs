@@ -1,9 +1,15 @@
+extern crate collections;
+use std::vec::Vec;
+use collections::hashmap::HashMap;
+
 // Stores a set of characters as a collection of dense ranges
 #[deriving(Eq)]
+#[deriving(TotalEq)]
 #[deriving(Clone)]
 #[deriving(Show)]
+#[deriving(Hash)]
 struct RangeSet {
-  assoc_list: std::vec::Vec<(char, char)>,
+  assoc_list: Vec<(char, char)>,
 }
 
 impl RangeSet {
@@ -12,8 +18,7 @@ impl RangeSet {
   }
 
   fn has(&self, c: char) -> bool {
-    for pair in self.assoc_list.iter() {
-      let &(start, end) = pair;
+    for &(start, end) in self.assoc_list.iter() {
       if c >= start && c <= end {
         return true;
       }
@@ -28,6 +33,23 @@ impl RangeSet {
   fn add_range(&mut self, start: char, end: char) {
     self.assoc_list.push((start, end));
   }
+
+  /// returns some member of the set
+  fn some_member(&self) -> char {
+    let &(c, _) = self.assoc_list.get(0); c
+  }
+
+  fn to_str(&self) -> ~str {
+    let mut r = ~"";
+    for &(s,e) in self.assoc_list.iter() {
+      if s == e {
+        r = r.append(format!("{}", s));
+      } else {
+        r = r.append(format!("{}-{}", s,e));
+      }
+    }
+    r
+  }
 }
 
 fn Char(c: char) -> Regex {
@@ -36,8 +58,10 @@ fn Char(c: char) -> Regex {
 }
 
 #[deriving(Eq)]
+#[deriving(TotalEq)]
 #[deriving(Clone)]
 #[deriving(Show)]
+#[deriving(Hash)]
 enum Regex {
   Null, // Matches nothing
   Epsilon, // Matches the empty string
@@ -46,6 +70,21 @@ enum Regex {
   Alt(~Regex, ~Regex), // Alternation, aka "or"
   Seq(~Regex, ~Regex), // One after another
   Rep(~Regex), // Kleene closure, repeated matching
+}
+
+impl Regex {
+  /// Stringification
+  fn to_str(&self) -> ~str {
+    match *self {
+      Null => ~"(∅)",
+      Epsilon => ~"ε",
+      AnyChar => ~".",
+      CharSet(ref rs) => rs.to_str(),
+      Alt(~ref r1, ~ref r2) => format!("({}|{})", r1.to_str(), r2.to_str()),
+      Seq(~ref r1, ~ref r2) => format!("({}{})", r1.to_str(), r2.to_str()),
+      Rep(~ref r1) => format!("({})*", r1.to_str()),
+    }
+  }
 }
 
 // Keep regexes in canonical form so it's easier to compare them
@@ -266,12 +305,11 @@ fn parsing_tests() {
 }
 
 // This approximate equivalence relation on regexes is very important for DFA
-// generation.  
+// generation.  This relies on the regexes being in a canonical form as
+// produced by the `simplify` function
 fn equiv(re1: &Regex, re2: &Regex) -> bool {
   match (re1, re2) {
     (r1, r2) if r1 == r2 => true,
-
-    (&CharSet(ref rs1), &CharSet(ref rs2)) => rs1 == rs2,
 
     (&Alt(~Alt(~ref r1, ~ref s1), ~ref t1),
      &Alt(~ref r2, ~Alt(~ref s2, ~ref t2))) 
@@ -328,4 +366,68 @@ fn equiv_test() {
   assert!(equiv(&parse("(a|b)**"), &parse("(b|a)**")));
 }
 
+// For a given regular expression, we can partition the character set into sets
+// that we need to take the derivative with respect to.  Initially, a dumb fn
+// that returns silliness. TODO a real implementation.
+fn partition(_: &Regex) -> Vec<RangeSet> {
+  let mut v = vec!();
+  for c in range(97, 104u32) {
+    let c = std::char::from_u32(c).unwrap();
+    v.push(RangeSet{assoc_list: vec!((c, c))});
+  } 
+  v
+}
 
+#[deriving(Show)]
+struct Dfa {
+  dfa: Vec<(Regex, HashMap<char, Regex>)>,
+}
+
+fn build(re: Regex) -> Dfa {
+  // Each node is labelled with a Regex, and has a map of char -> DerivedRegex
+  let mut builder = vec!();
+  let mut worklist: Vec<Regex> = vec!(re);
+  loop {
+    if worklist.len() == 0 {
+      return Dfa{dfa: builder };
+    }
+    let work = worklist.pop().unwrap();
+    let parts = partition(&work);
+    for set in parts.iter() {
+      let c = set.some_member();
+      let derivative = derive(work.clone(), c);
+      {
+        let pos = match builder.iter().position(|&(ref e,_)| equiv(&work, e)) {
+          Some(i) => i,
+          None => {
+            builder.push((work.clone(),HashMap::new()));
+            builder.len()-1
+          }
+        };
+        let &(_, ref mut table) = builder.get_mut(pos);
+        table.insert(c, derivative.clone());
+      }   
+      if !builder.iter().any(|&(ref e,_)| equiv(e, &derivative)) {
+        worklist.push(derivative);
+      }
+    }
+  }
+}
+
+fn make_dot(dfa: Dfa) {
+  println!(r"digraph g \{");
+  for &(ref node, ref v) in dfa.dfa.iter() {
+    println!("\"{}\" [ label=\"{}\"];", node, node.to_str());
+    for (c, to) in v.iter() {
+      println!("  \"{}\" -> \"{}\" [ label=\"{}\"];", node, to, c);
+    }
+  println!("");
+
+  }
+  println!(r"\}");
+}
+
+#[cfg(not(test))]
+fn main() {
+  make_dot(build(parse("abc")));
+}
