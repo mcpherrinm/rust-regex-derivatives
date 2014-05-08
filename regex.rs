@@ -9,6 +9,7 @@ use collections::hashmap::HashMap;
 #[deriving(Show)]
 #[deriving(Hash)]
 struct RangeSet {
+  //alphabetminus: bool,
   assoc_list: Vec<(char, char)>,
 }
 
@@ -366,16 +367,31 @@ fn equiv_test() {
   assert!(equiv(&parse("(a|b)**"), &parse("(b|a)**")));
 }
 
+fn intersect(rs1: &RangeSet, rs2: &RangeSet) -> RangeSet {
+  rs1.clone()
+}
+
+fn pairwise_intersect(r1: Vec<RangeSet>, r2: Vec<RangeSet>) -> Vec<RangeSet> {
+  let mut ret = vec!();
+  for rs in r1.iter() {
+    for rs2 in r2.iter() {
+      ret.push(intersect(rs, rs2));
+    }
+  }
+  ret
+}
+
 // For a given regular expression, we can partition the character set into sets
-// that we need to take the derivative with respect to.  Initially, a dumb fn
-// that returns silliness. TODO a real implementation.
-fn partition(_: &Regex) -> Vec<RangeSet> {
-  let mut v = vec!();
-  for c in range(97, 104u32) {
-    let c = std::char::from_u32(c).unwrap();
-    v.push(RangeSet{assoc_list: vec!((c, c))});
-  } 
-  v
+// that we need to take the derivative with respect to.
+// Implicitly, there's also a rangeset of characters not in the vector
+fn partition(re: &Regex) -> Vec<RangeSet> {
+  match *re {
+    Null | Epsilon | AnyChar => vec!(), // All chars are equivalent
+    CharSet(ref rs) => vec!(rs.clone()),
+    Alt(~ref r, ~ref s) | Seq(~ref r, ~ref s) =>
+      pairwise_intersect(partition(r), partition(s)),
+    Rep(~ref r) => partition(r),
+  }
 }
 
 #[deriving(Show)]
@@ -429,5 +445,5 @@ fn make_dot(dfa: Dfa) {
 
 #[cfg(not(test))]
 fn main() {
-  make_dot(build(parse("abc")));
+  make_dot(build(parse("ab(c|(ec|d)*)ef(a|b)(c|d)(e|f)")));
 }

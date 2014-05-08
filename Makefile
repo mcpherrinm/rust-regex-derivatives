@@ -11,3 +11,6 @@ kcov: regex-dbg
 
 serve: kcov
 	cd kcov && python -m SimpleHTTPServer
+
+foo.png: regex
+	./regex | dot -Tpng -o foo.png
