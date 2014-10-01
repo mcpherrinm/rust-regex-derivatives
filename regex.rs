@@ -1,10 +1,10 @@
 extern crate collections;
 use std::vec::Vec;
-use collections::hashmap::HashMap;
+use std::collections::HashMap;
 
 // Stores a set of characters as a collection of dense ranges
+#[deriving(PartialEq)]
 #[deriving(Eq)]
-#[deriving(TotalEq)]
 #[deriving(Clone)]
 #[deriving(Show)]
 #[deriving(Hash)]
@@ -37,16 +37,16 @@ impl RangeSet {
 
   /// returns some member of the set
   fn some_member(&self) -> char {
-    let &(c, _) = self.assoc_list.get(0); c
+    let (c, _) = self.assoc_list[0]; c
   }
 
-  fn to_str(&self) -> ~str {
-    let mut r = ~"";
+  fn to_str(&self) -> String {
+    let mut r = String::new();
     for &(s,e) in self.assoc_list.iter() {
       if s == e {
-        r = r.append(format!("{}", s));
+        r = r.append(format!("{}", s).as_slice());
       } else {
-        r = r.append(format!("{}-{}", s,e));
+        r = r.append(format!("{}-{}", s, e).as_slice());
       }
     }
     r
@@ -58,8 +58,8 @@ fn Char(c: char) -> Regex {
   CharSet(RangeSet{ assoc_list: l })
 }
 
+#[deriving(PartialEq)]
 #[deriving(Eq)]
-#[deriving(TotalEq)]
 #[deriving(Clone)]
 #[deriving(Show)]
 #[deriving(Hash)]
@@ -68,22 +68,22 @@ enum Regex {
   Epsilon, // Matches the empty string
   AnyChar, // Matches any character
   CharSet(RangeSet), // set of chars, nonempty
-  Alt(~Regex, ~Regex), // Alternation, aka "or"
-  Seq(~Regex, ~Regex), // One after another
-  Rep(~Regex), // Kleene closure, repeated matching
+  Alt(Box<Regex>, Box<Regex>), // Alternation, aka "or"
+  Seq(Box<Regex>, Box<Regex>), // One after another
+  Rep(Box<Regex>), // Kleene closure, repeated matching
 }
 
 impl Regex {
   /// Stringification
-  fn to_str(&self) -> ~str {
+  fn to_str(&self) -> String {
     match *self {
-      Null => ~"(∅)",
-      Epsilon => ~"ε",
-      AnyChar => ~".",
+      Null => "(∅)".to_string(),
+      Epsilon => "ε".to_string(),
+      AnyChar => ".".to_string(),
       CharSet(ref rs) => rs.to_str(),
-      Alt(~ref r1, ~ref r2) => format!("({}|{})", r1.to_str(), r2.to_str()),
-      Seq(~ref r1, ~ref r2) => format!("({}{})", r1.to_str(), r2.to_str()),
-      Rep(~ref r1) => format!("({})*", r1.to_str()),
+      Alt(box ref r1, box ref r2) => format!("({}|{})", r1.to_str(), r2.to_str()),
+      Seq(box ref r1, box ref r2) => format!("({}{})", r1.to_str(), r2.to_str()),
+      Rep(box ref r1) => format!("({})*", r1.to_str()),
     }
   }
 }
@@ -96,23 +96,23 @@ fn simplify(re: Regex) -> Regex {
     AnyChar => AnyChar,
     CharSet(ref cset) if cset.empty() => Null,
     CharSet(c) => CharSet(c),
-    Alt(~r, ~s) => {
+    Alt(box r, box s) => {
       match (simplify(r), simplify(s)) {
         (Null, r) | (r, Null) => r,
-        (r, s) => Alt(~r, ~s)
+        (r, s) => Alt(box r, box s)
       }
     },
-    Seq(~r, ~s) => {
+    Seq(box r, box s) => {
       match (simplify(r), simplify(s)) {
         (Null, _)    | (_, Null)    => Null,
         (Epsilon, r) | (r, Epsilon) => r,
-        (r,s) => Seq(~r,~s),
+        (r,s) => Seq(box r,box s),
       }
     },
-    Rep(~r) => {
+    Rep(box r) => {
       match simplify(r) {
         Null | Epsilon => Epsilon,
-        Rep(~r) | r => Rep(~r),
+        Rep(box r) | r => Rep(box r),
       }
     }
   }
@@ -124,8 +124,8 @@ fn regex_empty(re: &Regex) -> bool {
     Epsilon => true,
     CharSet(ref range) => range.empty(),
     Rep(_) => true,
-    Seq(~ref p1, ~ref p2) => regex_empty(p1) && regex_empty(p2),
-    Alt(~ref p1, ~ref p2) => regex_empty(p1) || regex_empty(p2),
+    Seq(box ref p1, box ref p2) => regex_empty(p1) && regex_empty(p2),
+    Alt(box ref p1, box ref p2) => regex_empty(p1) || regex_empty(p2),
     _ => false
   }
 }
@@ -138,16 +138,16 @@ fn derive(re: Regex, c: char) -> Regex{
     AnyChar => Epsilon,
     CharSet(ref cpat) if cpat.has(c) => Epsilon,
     CharSet(_) => Null,
-    Alt(~p1, ~p2) => Alt(~derive(p1, c), ~derive(p2, c)),
-    Seq(~p1, ~p2) => {
-      let p1div = Seq(~derive(p1.clone(), c), ~p2.clone());
+    Alt(box p1, box p2) => Alt(box derive(p1, c), box derive(p2, c)),
+    Seq(box p1, box p2) => {
+      let p1div = Seq(box derive(p1.clone(), c), box p2.clone());
       if regex_empty(&p1) {
-        Alt(~derive(p2, c), ~p1div)
+        Alt(box derive(p2, c), box p1div)
       } else {
         p1div
       }
     },
-    Rep(~p) => simplify(Seq(~derive(p.clone(), c), ~Rep(~p))),
+    Rep(box p) => simplify(Seq(box derive(p.clone(), c), box Rep(box p))),
   })
 }
 
@@ -155,12 +155,12 @@ fn derive(re: Regex, c: char) -> Regex{
 fn derive_tests() {
   assert_eq!(derive(Char('a'), 'a'), Epsilon);
   assert_eq!(derive(Char('a'), 'b'), Null);
-  assert_eq!(derive(Seq(~Char('f'), ~Char('b')), 'f'), Char('b'));
-  assert_eq!(derive(Alt(~Seq(~Char('f'), ~Char('b')),
-                        ~Seq(~Char('f'), ~Rep(~Char('z')))),
+  assert_eq!(derive(Seq(box Char('f'), box Char('b')), 'f'), Char('b'));
+  assert_eq!(derive(Alt(box seq(box Char('f'), box Char('b')),
+                        box seq(box Char('f'), box rep(box Char('z')))),
                     'f'),
-             Alt(~Char('b'), ~Rep(~Char('z'))));
-  assert_eq!(derive(Rep(~Char('a')), 'a'), Rep(~Char('a')));
+             Alt(box Char('b'), box rep(box Char('z'))));
+  assert_eq!(derive(Rep(box Char('a')), 'a'), Rep(box Char('a')));
 }
 
 // Use the derivatives directly to match against a string
@@ -175,10 +175,10 @@ fn do_match(mut re: Regex, data: &str) -> bool {
 
 #[test]
 fn matcher_tests() {
-  assert!(do_match(Seq(~Char('b'), ~Rep(~Char('o'))), "boooo"));
-  assert!(!do_match(Seq(~Char('b'), ~Rep(~Char('o'))), "bozo"));
+  assert!(do_match(Seq(box Char('b'), box rep(box Char('o'))), "boooo"));
+  assert!(!do_match(Seq(box Char('b'), box rep(box Char('o'))), "bozo"));
 
-  assert!(do_match(Seq(~Char('f'), ~Rep(~Alt(~Char('b'), ~Char('z')))),
+  assert!(do_match(Seq(box Char('f'), box rep(box Alt(box Char('b'), box Char('z')))),
                   "fbzbb"));
 }
 
@@ -205,7 +205,7 @@ fn parse_regex(data: &mut CharIter) -> Regex {
   if data.peek() == Some(&'|') {
     data.next();
     let regex = parse_regex(data);
-    Alt(~term, ~regex)
+    Alt(box term, box regex)
   } else {
     term
   }
@@ -221,7 +221,7 @@ fn parse_term(data: &mut CharIter) -> Regex {
       _ => (),
     }
     let nextfactor = parse_factor(data);
-    factor = Seq(~factor, ~nextfactor);
+    factor = Seq(box factor, box nextfactor);
   }
 }
 
@@ -229,7 +229,7 @@ fn parse_factor(data: &mut CharIter) -> Regex {
   let mut base = parse_base(data);
   while !data.is_empty() && data.peek() == Some(&'*') {
     data.next();
-    base = Rep(~base);
+    base = Rep(box base);
   };
   base
 }
@@ -312,24 +312,24 @@ fn equiv(re1: &Regex, re2: &Regex) -> bool {
   match (re1, re2) {
     (r1, r2) if r1 == r2 => true,
 
-    (&Alt(~Alt(~ref r1, ~ref s1), ~ref t1),
-     &Alt(~ref r2, ~Alt(~ref s2, ~ref t2))) 
+    (&Alt(box Alt(box ref r1, box ref s1), box ref t1),
+     &Alt(box ref r2, box Alt(box ref s2, box ref t2))) 
       if equiv(r1, r2) && equiv(s1, s2) && equiv(t1, t2) => true,
 
-    (&Alt(~ref r1, ~ref s1), &Alt(~ref s2, ~ref r2)) 
+    (&Alt(box ref r1, box ref s1), &Alt(box ref s2, box ref r2)) 
       if equiv(r1, r2) && equiv(s1, s2) => true,
 
-    (&Alt(~ref r1, ~ref s1), &Alt(~ref r2, ~ref s2)) =>
+    (&Alt(box ref r1, box ref s1), &Alt(box ref r2, box ref s2)) =>
       equiv(r1, r2) && equiv(s1, s2),
 
-    (&Seq(~Seq(~ref r1, ~ref s1), ~ref t1),
-     &Seq(~ref r2, ~Seq(~ref s2, ~ref t2)))
+    (&Seq(box Seq(box ref r1, box ref s1), box ref t1),
+     &Seq(box ref r2, box Seq(box ref s2, box ref t2)))
       if (equiv(r1, r2) && equiv(s1, s2) && equiv(t1, t2)) => true,
 
-    (&Seq(~ref r1, ~ref s1), &Seq(~ref r2, ~ref s2)) =>
+    (&Seq(box ref r1, box ref s1), &Seq(box ref r2, box ref s2)) =>
       equiv(r1, r2) && equiv(s1, s2),
 
-    (&Rep(~ref r1), &Rep(~ref r2)) => equiv(r1, r2),
+    (&Rep(box ref r1), &Rep(box ref r2)) => equiv(r1, r2),
 
     _ => false,
   }
@@ -388,9 +388,9 @@ fn partition(re: &Regex) -> Vec<RangeSet> {
   match *re {
     Null | Epsilon | AnyChar => vec!(), // All chars are equivalent
     CharSet(ref rs) => vec!(rs.clone()),
-    Alt(~ref r, ~ref s) | Seq(~ref r, ~ref s) =>
+    Alt(box ref r, box ref s) | Seq(box ref r, box ref s) =>
       pairwise_intersect(partition(r), partition(s)),
-    Rep(~ref r) => partition(r),
+    Rep(box ref r) => partition(r),
   }
 }
 
@@ -431,7 +431,7 @@ fn build(re: Regex) -> Dfa {
 }
 
 fn make_dot(dfa: Dfa) {
-  println!(r"digraph g \{");
+  println!(r"digraph g {{");
   for &(ref node, ref v) in dfa.dfa.iter() {
     println!("\"{}\" [ label=\"{}\"];", node, node.to_str());
     for (c, to) in v.iter() {
@@ -440,7 +440,7 @@ fn make_dot(dfa: Dfa) {
   println!("");
 
   }
-  println!(r"\}");
+  println!(r"}}");
 }
 
 #[cfg(not(test))]
