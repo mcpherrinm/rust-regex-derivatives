@@ -162,14 +162,14 @@ fn derive(re: Regex, c: char) -> Regex{
 
 #[test]
 fn derive_tests() {
-  //assert_eq!(derive(Char('a'), 'a'), Epsilon);
-  //assert_eq!(derive(Char('a'), 'b'), Null);
-  //assert_eq!(derive(Seq(box Char('f'), box Char('b')), 'f'), Char('b'));
-  //assert_eq!(derive(Alt(box seq(box Char('f'), box Char('b')),
-  //                      box seq(box Char('f'), box rep(box Char('z')))),
-  //                  'f'),
-  //           Alt(box Char('b'), box rep(box Char('z'))));
-  //assert_eq!(derive(Rep(box Char('a')), 'a'), Rep(box Char('a')));
+  assert_eq!(derive(Char('a'), 'a'), Epsilon);
+  assert_eq!(derive(Char('a'), 'b'), Null);
+  assert_eq!(derive(Seq(box Char('f'), box Char('b')), 'f'), Char('b'));
+  assert_eq!(derive(Alt(box seq(box Char('f'), box Char('b')),
+                        box seq(box Char('f'), box rep(box Char('z')))),
+                    'f'),
+             Alt(box Char('b'), box rep(box Char('z'))));
+  assert_eq!(derive(Rep(box Char('a')), 'a'), Rep(box Char('a')));
 }
 
 // Use the derivatives directly to match against a string
@@ -184,11 +184,11 @@ fn do_match(mut re: Regex, data: &str) -> bool {
 
 #[test]
 fn matcher_tests() {
-  //assert!(do_match(Seq(box Char('b'), box rep(box Char('o'))), "boooo"));
-  //assert!(!do_match(Seq(box Char('b'), box rep(box Char('o'))), "bozo"));
+  assert!(do_match(Seq(box Char('b'), box rep(box Char('o'))), "boooo"));
+  assert!(!do_match(Seq(box Char('b'), box rep(box Char('o'))), "bozo"));
 
-  //assert!(do_match(Seq(box Char('f'), box rep(box Alt(box Char('b'), box Char('z')))),
-  //                "fbzbb"));
+  assert!(do_match(Seq(box Char('f'), box rep(box Alt(box Char('b'), box Char('z')))),
+                  "fbzbb"));
 }
 
 // Parsing regexes
