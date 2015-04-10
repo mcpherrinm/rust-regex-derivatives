@@ -165,10 +165,10 @@ fn derive_tests() {
   assert_eq!(derive(Char('a'), 'a'), Epsilon);
   assert_eq!(derive(Char('a'), 'b'), Null);
   assert_eq!(derive(Seq(box Char('f'), box Char('b')), 'f'), Char('b'));
-  assert_eq!(derive(Alt(box seq(box Char('f'), box Char('b')),
-                        box seq(box Char('f'), box rep(box Char('z')))),
+  assert_eq!(derive(Alt(box Seq(box Char('f'), box Char('b')),
+                        box Seq(box Char('f'), box Rep(box Char('z')))),
                     'f'),
-             Alt(box Char('b'), box rep(box Char('z'))));
+             Alt(box Char('b'), box Rep(box Char('z'))));
   assert_eq!(derive(Rep(box Char('a')), 'a'), Rep(box Char('a')));
 }
 
@@ -184,10 +184,10 @@ fn do_match(mut re: Regex, data: &str) -> bool {
 
 #[test]
 fn matcher_tests() {
-  assert!(do_match(Seq(box Char('b'), box rep(box Char('o'))), "boooo"));
-  assert!(!do_match(Seq(box Char('b'), box rep(box Char('o'))), "bozo"));
+  assert!(do_match(Seq(box Char('b'), box Rep(box Char('o'))), "boooo"));
+  assert!(!do_match(Seq(box Char('b'), box Rep(box Char('o'))), "bozo"));
 
-  assert!(do_match(Seq(box Char('f'), box rep(box Alt(box Char('b'), box Char('z')))),
+  assert!(do_match(Seq(box Char('f'), box Rep(box Alt(box Char('b'), box Char('z')))),
                   "fbzbb"));
 }
 
