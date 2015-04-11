@@ -73,8 +73,8 @@ enum Regex {
   Epsilon, // Matches the empty string
   AnyChar, // Matches any character
   CharSet(RangeSet), // set of chars, nonempty
-  Alt(Box<Regex>, Box<Regex>), // Alternation, aka "or"
-  Seq(Box<Regex>, Box<Regex>), // One after another
+  Alt(Vec<Regex>), // Alternation, aka "or"
+  Seq(Vec<Regex>), // One after another
   Rep(Box<Regex>), // Kleene closure, repeated matching
 }
 
@@ -94,8 +94,23 @@ impl Regex {
       Epsilon => "ε".to_string(),
       AnyChar => ".".to_string(),
       CharSet(ref rs) => rs.to_str(),
-      Alt(ref r1, ref r2) => format!("({}|{})", r1.to_str(), r2.to_str()),
-      Seq(ref r1, ref r2) => format!("({}{})", r1.to_str(), r2.to_str()),
+      Alt(ref v) => {
+        let mut s = "(".to_string();
+        for r in v {
+          s.push_str(&*r.to_str());
+          s.push('|')
+        }
+        s.push(')');
+        s
+      },
+      Seq(ref v) => {
+        let mut s = "(".to_string();
+        for r in v {
+          s.push_str(&*r.to_str());
+        }
+        s.push(')');
+        s
+      },
       Rep(ref r1) => format!("({})*", r1.to_str()),
     }
   }
@@ -109,21 +124,21 @@ fn simplify(re: Regex) -> Regex {
     AnyChar => AnyChar,
     CharSet(ref cset) if cset.empty() => Null,
     CharSet(c) => CharSet(c),
-    Alt(r, s) => {
-      match (simplify(*r), simplify(*s)) {
-        (Null, r) | (r, Null) => r,
-        /* Canonicalize (r|s)|t as r|(s|t) */
-        (Alt(r, s), t) => 
-          simplify(Alt(r, Box::new(Alt(s, Box::new(t))))),
-        (r, s) => Alt(Box::new(r), Box::new(s))
+    Alt(v) => {
+      let e: Vec<Regex> = v.into_iter().map(|r| simplify(r)).filter(|r| *r == Null).collect();
+      if e.len() == 0 { // The vector was all Nulls
+        Null
+      } else {
+        Alt(e)
       }
-    },
-    Seq(r, s) => {
-      match (simplify(*r), simplify(*s)) {
+    }
+    Seq(e) => {
+     Seq(e)
+      /*match (simplify(*r), simplify(*s)) {
         (Null, _)    | (_, Null)    => Null,
         (Epsilon, r) | (r, Epsilon) => r,
         (r,s) => Seq(Box::new(r),Box::new(s)),
-      }
+      }*/
     },
     Rep(r) => {
       match simplify(*r) {
@@ -141,8 +156,8 @@ fn regex_empty(re: &Regex) -> bool {
     Epsilon => true,
     CharSet(ref range) => range.empty(),
     Rep(_) => true,
-    Seq(ref p1, ref p2) => regex_empty(p1) && regex_empty(p2),
-    Alt(ref p1, ref p2) => regex_empty(p1) || regex_empty(p2),
+    Seq(ref v) => v.iter().all(regex_empty),
+    Alt(ref v) => v.iter().any(regex_empty),
     _ => false
   }
 }
@@ -155,16 +170,19 @@ fn derive(re: Regex, c: char) -> Regex{
     AnyChar => Epsilon,
     CharSet(ref cpat) if cpat.has(c) => Epsilon,
     CharSet(_) => Null,
-    Alt(p1, p2) => Alt(Box::new(derive(*p1, c)), Box::new(derive(*p2, c))),
-    Seq(p1, p2) => {
+    Alt(v) => Alt(v.into_iter().map(|r| derive(r, c)).collect()),
+    Seq(p) => {
+        Seq(p)
+ /*
       let p1div = Seq(Box::new(derive((*p1).clone(), c)), Box::new((*p2).clone()));
       if regex_empty(&p1) {
         Alt(Box::new(derive(*p2, c)), Box::new(p1div))
       } else {
         p1div
       }
+*/
     },
-    Rep(p) => simplify(Seq(Box::new(derive((*p).clone(), c)), Box::new(Rep(p)))),
+    Rep(p) => simplify(Seq([derive((*p).clone(), c), Rep(p)].to_vec())),
   })
 }
 
@@ -219,23 +237,20 @@ fn parse_regex(data: &mut CharIter) -> Regex {
   if data.peek() == Some(&'|') {
     data.next();
     let regex = parse_regex(data);
-    Alt(Box::new(term), Box::new(regex))
+    Alt([term, regex].to_vec())
   } else {
     term
   }
 }
 
 fn parse_term(data: &mut CharIter) -> Regex {
-  let mut factor = parse_factor(data);
+  let mut factors = [parse_factor(data)].to_vec();
   loop {
     match data.peek() {
-      None => return factor,
-      Some(&')') => return factor,
-      Some(&'|') => return factor,
+      None | Some(&')') | Some(&'|') => return Seq(factors),
       _ => (),
     }
-    let nextfactor = parse_factor(data);
-    factor = Seq(Box::new(factor), Box::new(nextfactor));
+    factors.push(parse_factor(data));
   }
 }
 
@@ -326,12 +341,14 @@ fn equiv(re1: &Regex, re2: &Regex) -> bool {
   match (re1, re2) {
     (r1, r2) if r1 == r2 => true,
 
+/*
     (&Alt(ref r1, ref s1), &Alt(ref r2, ref s2)) =>
          equiv(r1, r2) && equiv(s1, s2)
       || equiv(r1, s2) && equiv(s1, r2),
 
     (&Seq(ref r1, ref s1), &Seq(ref r2, ref s2)) =>
       equiv(r1, r2) && equiv(s1, s2),
+*/
 
     (&Rep(ref r1), &Rep(ref r2)) => equiv(&*r1, &*r2),
     _ => false,
@@ -374,10 +391,11 @@ fn intersect(rs1: &RangeSet, rs2: &RangeSet) -> RangeSet {
   rs1.clone()
 }
 
-fn pairwise_intersect(r1: Vec<RangeSet>, r2: Vec<RangeSet>) -> Vec<RangeSet> {
+fn pairwise_intersect(r:Vec<Vec<RangeSet>>) -> Vec<RangeSet> {
   let mut ret = vec!();
-  for rs in r1.iter() {
-    for rs2 in r2.iter() {
+  // This is obviously incorrect
+  for rs in r[0].iter() {
+    for rs2 in r[1].iter() {
       ret.push(intersect(rs, rs2));
     }
   }
@@ -391,8 +409,8 @@ fn partition(re: &Regex) -> Vec<RangeSet> {
   match *re {
     Null | Epsilon | AnyChar => vec!(), // All chars are equivalent
     CharSet(ref rs) => vec!(rs.clone()),
-    Alt(ref r, ref s) | Seq(ref r, ref s) =>
-      pairwise_intersect(partition(r), partition(s)),
+    Alt(ref v) | Seq(ref v) =>
+      pairwise_intersect(v.iter().map(partition).collect()),
     Rep(ref r) => partition(r),
   }
 }
