@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::vec::Vec;
 use std::collections::HashMap;
 
@@ -7,7 +8,10 @@ use std::collections::HashMap;
 #[derive(Clone)]
 #[derive(Debug)]
 #[derive(Hash)]
+#[derive(Ord)]
+#[derive(PartialOrd)]
 struct RangeSet {
+  //Todo: Sometimes it might be better to store the elements not in the set
   //alphabetminus: bool,
   assoc_list: Vec<(char, char)>,
 }
@@ -52,7 +56,7 @@ impl RangeSet {
   }
 }
 
-fn Char(c: char) -> Regex {
+fn char(c: char) -> Regex {
   let l = vec!((c,c));
   CharSet(RangeSet{ assoc_list: l })
 }
@@ -62,6 +66,8 @@ fn Char(c: char) -> Regex {
 #[derive(Clone)]
 #[derive(Debug)]
 #[derive(Hash)]
+#[derive(Ord)]
+#[derive(PartialOrd)]
 enum Regex {
   Null, // Matches nothing
   Epsilon, // Matches the empty string
@@ -106,6 +112,9 @@ fn simplify(re: Regex) -> Regex {
     Alt(r, s) => {
       match (simplify(*r), simplify(*s)) {
         (Null, r) | (r, Null) => r,
+        /* Canonicalize (r|s)|t as r|(s|t) */
+        (Alt(r, s), t) => 
+          simplify(Alt(r, Box::new(Alt(s, Box::new(t))))),
         (r, s) => Alt(Box::new(r), Box::new(s))
       }
     },
@@ -161,14 +170,14 @@ fn derive(re: Regex, c: char) -> Regex{
 
 #[test]
 fn derive_tests() {
-  assert_eq!(derive(Char('a'), 'a'), Epsilon);
-  assert_eq!(derive(Char('a'), 'b'), Null);
-  assert_eq!(derive(Seq(Box::new(Char('f')), Box::new(Char('b'))), 'f'), Char('b'));
+  assert_eq!(derive(char('a'), 'a'), Epsilon);
+  assert_eq!(derive(char('a'), 'b'), Null);
+  assert_eq!(derive(Seq(Box::new(char('f')), Box::new(char('b'))), 'f'), char('b'));
   //assert_eq!(derive(Alt(Box::new(Seq(Box::new(Char('f')))), Box::new(Char('b')),
   //                      Box::new(Seq(Box::new(Char('f')), Box::new(Rep(Box::new(Char('z'))))))),
   //                  'f'),
   //           Alt(Box::new(Char('b')), Box::new(Rep(Box::new(Char('z'))))));
-  assert_eq!(derive(Rep(Box::new(Char('a'))), 'a'), Rep(Box::new(Char('a'))));
+  assert_eq!(derive(Rep(Box::new(char('a'))), 'a'), Rep(Box::new(char('a'))));
 }
 
 // Use the derivatives directly to match against a string
@@ -183,8 +192,8 @@ fn do_match(mut re: Regex, data: &str) -> bool {
 
 #[test]
 fn matcher_tests() {
-  assert!(do_match(Seq(Box::new(Char('b')), Box::new(Rep(Box::new(Char('o'))))), "boooo"));
-  assert!(!do_match(Seq(Box::new(Char('b')), Box::new(Rep(Box::new(Char('o'))))), "bozo"));
+  assert!(do_match(Seq(Box::new(char('b')), Box::new(Rep(Box::new(char('o'))))), "boooo"));
+  assert!(!do_match(Seq(Box::new(char('b')), Box::new(Rep(Box::new(char('o'))))), "bozo"));
 }
 
 // Parsing regexes
@@ -252,8 +261,8 @@ fn parse_base(data: &mut CharIter) -> Regex {
       range
     }
     '.' => AnyChar,
-    '\\' => Char(data.next().unwrap()),
-    c => Char(c),
+    '\\' => char(data.next().unwrap()),
+    c => char(c),
   }
 }
 
