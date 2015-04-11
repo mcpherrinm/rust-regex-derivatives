@@ -316,26 +316,15 @@ fn parsing_tests() {
 fn equiv(re1: &Regex, re2: &Regex) -> bool {
   match (re1, re2) {
     (r1, r2) if r1 == r2 => true,
-/*
-    (&Alt(box Alt(box ref r1, box ref s1), box ref t1),
-     &Alt(box ref r2, box Alt(box ref s2, box ref t2))) 
-      if equiv(r1, r2) && equiv(s1, s2) && equiv(t1, t2) => true,
 
-    (&Alt(box ref r1, box ref s1), &Alt(box ref s2, box ref r2)) 
-      if equiv(r1, r2) && equiv(s1, s2) => true,
+    (&Alt(ref r1, ref s1), &Alt(ref r2, ref s2)) =>
+         equiv(r1, r2) && equiv(s1, s2)
+      || equiv(r1, s2) && equiv(s1, r2),
 
-    (&Alt(box ref r1, box ref s1), &Alt(box ref r2, box ref s2)) =>
+    (&Seq(ref r1, ref s1), &Seq(ref r2, ref s2)) =>
       equiv(r1, r2) && equiv(s1, s2),
 
-    (&Seq(box Seq(box ref r1, box ref s1), box ref t1),
-     &Seq(box ref r2, box Seq(box ref s2, box ref t2)))
-      if (equiv(r1, r2) && equiv(s1, s2) && equiv(t1, t2)) => true,
-
-    (&Seq(box ref r1, box ref s1), &Seq(box ref r2, box ref s2)) =>
-      equiv(r1, r2) && equiv(s1, s2),
-
-    (&Rep(box ref r1), &Rep(box ref r2)) => equiv(r1, r2),
-*/
+    (&Rep(ref r1), &Rep(ref r2)) => equiv(&*r1, &*r2),
     _ => false,
   }
 }
