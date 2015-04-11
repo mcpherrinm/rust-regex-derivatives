@@ -190,7 +190,7 @@ fn derive(re: Regex, c: char) -> Regex{
 fn derive_tests() {
   assert_eq!(derive(char('a'), 'a'), Epsilon);
   assert_eq!(derive(char('a'), 'b'), Null);
-  assert_eq!(derive(Seq(Box::new(char('f')), Box::new(char('b'))), 'f'), char('b'));
+  assert_eq!(derive(Seq(vec![char('a'), char('b')]), 'f'), char('b'));
   //assert_eq!(derive(Alt(Box::new(Seq(Box::new(Char('f')))), Box::new(Char('b')),
   //                      Box::new(Seq(Box::new(Char('f')), Box::new(Rep(Box::new(Char('z'))))))),
   //                  'f'),
@@ -210,8 +210,9 @@ fn do_match(mut re: Regex, data: &str) -> bool {
 
 #[test]
 fn matcher_tests() {
-  assert!(do_match(Seq(Box::new(char('b')), Box::new(Rep(Box::new(char('o'))))), "boooo"));
-  assert!(!do_match(Seq(Box::new(char('b')), Box::new(Rep(Box::new(char('o'))))), "bozo"));
+  let bostar = Seq(vec![char('b'), Rep(Box::new(char('o')))]);
+  assert!(do_match(bostar.clone(), "boooo"));
+  assert!(!do_match(bostar, "bozo"));
 }
 
 // Parsing regexes
