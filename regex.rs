@@ -182,7 +182,7 @@ fn derive(re: Regex, c: char) -> Regex{
         // Thus we consider the possiblity of the derivative of this entry in
         // the sequence wrt c and add it to the sequence's derivative.
         let mut derivative: std::vec::Vec<Regex> = vec![derive(entry.clone(), c)];
-        derivative.extend(v.iter().skip(index+1));
+        derivative.extend(v.clone().into_iter().skip(index+1));
         derivatives.push(Seq(derivative));
         if !regex_empty(entry) {
           break;
