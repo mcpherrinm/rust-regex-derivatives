@@ -125,11 +125,25 @@ fn simplify(re: Regex) -> Regex {
     CharSet(ref cset) if cset.empty() => Null,
     CharSet(c) => CharSet(c),
     Alt(v) => {
-      let e: Vec<Regex> = v.into_iter().map(|r| simplify(r)).filter(|r| *r != Null).collect();
+      let mut e: Vec<Regex> = v.into_iter().map(|r| simplify(r)).filter(|r| *r != Null).collect();
+      let mut nested = vec![];
+      let mut i: usize = 0;
+      while i < e.len() {
+          while i < e.len() {
+              if let Alt(_) = e[i] {
+                nested.push(e.swap_remove(i));
+              } else {
+                  break
+              }
+          }
+          i += 1;
+      }
+      e.extend(nested);
       if e.len() == 0 { // The vector was all Nulls
-        Null
+          Null
       } else {
-        Alt(e)
+          e.sort();
+          Alt(e)
       }
     }
     Seq(v) => {
@@ -369,8 +383,6 @@ fn equiv(re1: &Regex, re2: &Regex) -> bool {
 
 #[test]
 fn equiv_test() {
-  println!("parse a: {:?}", parse("a"));
-  println!("parse b: {:?}", parse("b"));
   assert!(!equiv(&parse("a"), &parse("b")));
   assert!(equiv(&parse("a|b"), &parse("b|a")));
   assert!(equiv(&parse("a|b|c"), &parse("a|b|c")));
