@@ -125,20 +125,24 @@ fn simplify(re: Regex) -> Regex {
     CharSet(ref cset) if cset.empty() => Null,
     CharSet(c) => CharSet(c),
     Alt(v) => {
-      let e: Vec<Regex> = v.into_iter().map(|r| simplify(r)).filter(|r| *r == Null).collect();
+      let e: Vec<Regex> = v.into_iter().map(|r| simplify(r)).filter(|r| *r != Null).collect();
       if e.len() == 0 { // The vector was all Nulls
         Null
       } else {
         Alt(e)
       }
     }
-    Seq(e) => {
-     Seq(e)
-      /*match (simplify(*r), simplify(*s)) {
-        (Null, _)    | (_, Null)    => Null,
-        (Epsilon, r) | (r, Epsilon) => r,
-        (r,s) => Seq(Box::new(r),Box::new(s)),
-      }*/
+    Seq(v) => {
+      let e: Vec<Regex> = v.into_iter().map(|r| simplify(r)).filter(|r| *r != Epsilon).collect();
+      if e.iter().any(|r| *r == Null) {
+        Null
+      } else if e.len() == 1 {
+        e.into_iter().next().unwrap()
+      } else if e.len() == 0 {
+        Epsilon
+      } else {
+        Seq(e)
+      }
     },
     Rep(r) => {
       match simplify(*r) {
@@ -171,16 +175,20 @@ fn derive(re: Regex, c: char) -> Regex{
     CharSet(ref cpat) if cpat.has(c) => Epsilon,
     CharSet(_) => Null,
     Alt(v) => Alt(v.into_iter().map(|r| derive(r, c)).collect()),
-    Seq(p) => {
-        Seq(p)
- /*
-      let p1div = Seq(Box::new(derive((*p1).clone(), c)), Box::new((*p2).clone()));
-      if regex_empty(&p1) {
-        Alt(Box::new(derive(*p2, c)), Box::new(p1div))
-      } else {
-        p1div
+    Seq(v) => {
+      let mut derivatives = vec![];
+      for (index, entry) in v.iter().enumerate() {
+        // Every entry before this one could have been empty.
+        // Thus we consider the possiblity of the derivative of this entry in
+        // the sequence wrt c and add it to the sequence's derivative.
+        let mut derivative: std::vec::Vec<Regex> = vec![derive(entry.clone(), c)];
+        derivative.extend(v.iter().skip(index+1));
+        derivatives.push(Seq(derivative));
+        if !regex_empty(entry) {
+          break;
+        }
       }
-*/
+      simplify(Alt(derivatives))
     },
     Rep(p) => simplify(Seq([derive((*p).clone(), c), Rep(p)].to_vec())),
   })
@@ -190,7 +198,7 @@ fn derive(re: Regex, c: char) -> Regex{
 fn derive_tests() {
   assert_eq!(derive(char('a'), 'a'), Epsilon);
   assert_eq!(derive(char('a'), 'b'), Null);
-  assert_eq!(derive(Seq(vec![char('a'), char('b')]), 'f'), char('b'));
+  //assert_eq!(derive(Seq(vec![char('a'), char('b')]), 'f'), char('b'));
   //assert_eq!(derive(Alt(Box::new(Seq(Box::new(Char('f')))), Box::new(Char('b')),
   //                      Box::new(Seq(Box::new(Char('f')), Box::new(Rep(Box::new(Char('z'))))))),
   //                  'f'),
@@ -317,7 +325,10 @@ fn matches(expr: &str, data: &str) -> bool {
 
 #[test]
 fn parsing_tests() {
-  let abcstar = parse("abc*");
+  let abcstar = parse_regex(&mut "abc*".chars().peekable());
+  println!("abc*: {}", abcstar.to_str());
+  let abcstar = simplify(abcstar);
+  println!("abc*: {}", abcstar.to_str());
   assert!(do_match(abcstar.clone(), "ab"));
   assert!(do_match(abcstar.clone(), "abc"));
   assert!(do_match(abcstar.clone(), "abccccc"));
@@ -358,6 +369,8 @@ fn equiv(re1: &Regex, re2: &Regex) -> bool {
 
 #[test]
 fn equiv_test() {
+  println!("parse a: {:?}", parse("a"));
+  println!("parse b: {:?}", parse("b"));
   assert!(!equiv(&parse("a"), &parse("b")));
   assert!(equiv(&parse("a|b"), &parse("b|a")));
   assert!(equiv(&parse("a|b|c"), &parse("a|b|c")));
